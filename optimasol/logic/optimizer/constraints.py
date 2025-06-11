@@ -1,46 +1,62 @@
-def filter_combinations(candidates, client):
-    """
-    Filters a list of binary ON/OFF sequences to keep only those that satisfy
-    the temperature constraints defined in the client's comfort schedule.
+# logic/optimizer/constraints.py
+# ------------------------------------------------------------------
+# Build all temperature-related constraints (physics + comfort).
+# ------------------------------------------------------------------
 
-    Parameters:
-        candidates (List[List[int]]): List of binary sequences representing heater schedules.
-        client (ParameterClient): Client-specific parameters including comfort constraints.
+from datetime import time
 
-    Returns:
-        List[List[int]]: A list of sequences that satisfy all comfort constraints.
-    """
-    valid = []
-    step = 24 / client.n
-    constraints = [(0, 0)] + sorted(client.points.items()) + [(24, 0)]
 
-    for seq in candidates:
-        temperatures = [client.t0]
-        is_valid = True
+def _time_to_index(hh_mm: str, step_min: int) -> int:
+    """Convert 'HH:MM' to slot index k."""
+    h, m = map(int, hh_mm.split(":"))
+    return (h * 60 + m) // step_min
 
-        for i in range(len(constraints) - 1):
-            start_hour, _ = constraints[i]
-            end_hour, target_temp = constraints[i + 1]
 
-            idx_start = int(start_hour / step)
-            idx_end = int(end_hour / step)
+def add_temperature_constraints(
+    solver,
+    u_vars,
+    T_vars,
+    *,
+    step_min: int,
+    volume_L: float,
+    UA: float,
+    P_nom: float,
+    t0: float,
+    comfort_schedule: list,
+    min_temp_enabled: bool,
+    min_temp_value: float,
+    rho: float = 1000,           # kg/m³
+    Cp: float = 4180,            # J/(kg·°C)
+    Tamb: float = 20.0,          # °C  (assumed indoor)
+):
+    """Add physics + comfort constraints to CBC/OR-tools solver."""
 
-            for j in range(idx_start, min(idx_end, len(seq))):
-                delta = client.pente_positive if seq[j] else client.pente_negative
-                new_temp = temperatures[-1] + delta
+    N = len(u_vars)
+    dt_h = step_min / 60         # hours
+    C_kWh = rho * (volume_L / 1000) * Cp / 3_600_000  # (kWh per °C)
+    loss_coeff = (UA * dt_h) / C_kWh                  # dimensionless
+    heat_coeff = (P_nom / 1000) * dt_h / C_kWh        # kWh → °C
 
-                for shower in client.horaire:
-                    if shower >= j * step and shower < (j + 1) * step:
-                        new_temp -= client.douche
+    # Initial temperature
+    solver.Add(T_vars[0] == t0)
 
-                temperatures.append(new_temp)
+    # Dynamics:  T_{k+1} = (1-loss)·T_k + heat_coeff·u_k + loss·Tamb
+    for k in range(N):
+        solver.Add(
+            T_vars[k + 1]
+            == (1 - loss_coeff) * T_vars[k]
+            + heat_coeff * u_vars[k]
+            + loss_coeff * Tamb
+        )
 
-            # Check if constraint is satisfied at end of interval
-            if temperatures[-1] < target_temp:
-                is_valid = False
-                break
+    # Point targets (06:30 → 70 °C etc.)
+    for item in comfort_schedule:
+        idx = _time_to_index(item["time"], step_min)
+        # if idx falls outside window (rare), ignore
+        if 0 <= idx <= N:
+            solver.Add(T_vars[idx] >= item["target_temperature_celsius"])
 
-        if is_valid:
-            valid.append(seq)
-
-    return valid
+    # Permanent minimum temperature
+    if min_temp_enabled:
+        for Tk in T_vars:
+            solver.Add(Tk >= min_temp_value)

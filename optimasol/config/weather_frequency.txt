@@ -1,0 +1,2 @@
+# This is the frequency of updating weather and production (in hours). 
+frequency = 6

@@ -1,0 +1,7 @@
+# Optimizer core configuration  (optimasol/logic/optimizer)
+
+# Time-step for each calculation / discretisation, in minutes:
+step_minutes = 15
+
+# Prediction horizon that the programme considers at each step, in hours:
+prediction_horizon_hours = 24

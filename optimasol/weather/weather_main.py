@@ -1,7 +1,7 @@
 import os
-from client_weather_processor import process_client_weather
+from .client_weather_processor import process_client_weather
 
-def main():
+def main_weather():
     # Get the absolute path to the "Clients" folder (which is at the same level as "weather/")
     base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Clients"))
 
@@ -25,4 +25,4 @@ def main():
     print("\n[Main] Forecast processing completed.")
 
 if __name__ == "__main__":
-    main()
+    main_weather()

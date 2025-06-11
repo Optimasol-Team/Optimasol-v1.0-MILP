@@ -1,8 +1,8 @@
-from client_reader import read_client_data
-from client_result_writer import write_weather_result
-from client_api_fetcher import get_client_production
-from apis.open_meteo import get_forecast as get_open_meteo
-from aggregator import aggregate_forecasts
+from .client_reader import read_client_data
+from .client_result_writer import write_weather_result
+from .client_api_fetcher import get_client_production
+from .apis.open_meteo import get_forecast as get_open_meteo
+from .aggregator import aggregate_forecasts
 
 import os
 

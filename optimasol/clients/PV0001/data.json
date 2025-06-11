@@ -13,6 +13,7 @@
   "water_heater": {
     "volume_liters": 200,
     "power_watts": 3000,
+    "location_type": "indoor",
     "comfort_schedule": [
       {
         "time": "06:30",
@@ -22,7 +23,17 @@
         "time": "20:00",
         "target_temperature_celsius": 65
       }
-    ]
+    ],
+    "minimum_comfort_temperature": {
+      "enabled": true,
+      "temperature_celsius": 50
+    },
+    "hot_water_draws": [
+      { "time": "07:15", "volume_liters": 40 },
+      { "time": "13:00", "volume_liters": 10 },
+      { "time": "19:30", "volume_liters": 35 }
+    ],
+    "cold_water_temperature_celsius": 12
   },
   "pv_system": {
     "surface_m2": 6.0,

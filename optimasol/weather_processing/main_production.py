@@ -13,7 +13,7 @@ from pathlib import Path
 from weather_processing.client_processor import process_client
 
 
-def main():
+def main_production():
     clients_root = Path("clients")
 
     if not clients_root.exists():
@@ -38,4 +38,4 @@ def main():
             print(f"Skipping {client_dir.name} (missing data or weather file)")
 
 if __name__ == "__main__":
-    main()
+    main_production()

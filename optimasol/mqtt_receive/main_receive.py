@@ -15,7 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from mqtt_receive.config_loader import load_mqtt_config
 from mqtt_receive.mqtt_client import start_mqtt_client
 
-def main():
+def receive():
     try:
         config = load_mqtt_config("config/mqtt_config_receive.txt")
     except Exception as e:
@@ -31,4 +31,4 @@ def main():
         print(f"[FATAL] Error in MQTT client loop: {e}")
 
 if __name__ == "__main__":
-    main()
+    receive()
