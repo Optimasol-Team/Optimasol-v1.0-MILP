@@ -1,0 +1,4 @@
+host=localhost
+user=root
+password=centrale2025!
+database=bdd_v2
