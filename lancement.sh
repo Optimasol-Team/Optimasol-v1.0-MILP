@@ -47,7 +47,7 @@ sudo systemctl status mosquitto --no-pager
 
 # 4. Installation des dépendances Python
 info "Installation des dépendances Python..."
-pip3 install pymysql ortools pulp watchdog paho-mqtt requests schedule
+pip3 install pymysql pulp watchdog paho-mqtt requests schedule panda numpy
 
 # 5. Installation de MariaDB
 info "Installation de MariaDB..."
@@ -129,7 +129,6 @@ echo ""
 info "Commandes disponibles :"
 echo "  cd Optimasol-v1.0-MILP-main"
 echo "  python3 main.py          # Lancer le système"
-echo "  python3 test_complet.py  # Tests complets"
 echo ""
 info "Base de données :"
 echo "  mysql -u root -poptimasol optimasol_db"
