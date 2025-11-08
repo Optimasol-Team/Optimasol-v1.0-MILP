@@ -274,8 +274,9 @@ DROP TABLE IF EXISTS `system_configuration`;
 CREATE TABLE `system_configuration` (
   `config_id` int NOT NULL AUTO_INCREMENT,
   `client_id` int DEFAULT NULL,
+  `water_consumption` JSON DEFAULT NULL,
   `cold_water_temperature` decimal(4,1) DEFAULT NULL,
-  `minimum_comfort_temperature_enabled` decimal(4,1) DEFAULT NULL,
+  `minimum_comfort_temperature_enabled` BOOLEAN DEFAULT FALSE,
   `minimum_comfort_temperature` decimal(4,1) DEFAULT NULL,
   `contract_type` enum('base','heures_creuses','tempo') DEFAULT NULL,
   `base_tariff` decimal(6,4) DEFAULT NULL,

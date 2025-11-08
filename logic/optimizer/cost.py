@@ -12,12 +12,18 @@ def _price_for_slot(slot_center, tariffs):
     end = time.fromisoformat(w["end"])
     in_hc = start <= slot_center.time() or slot_center.time() < end
     return hc if in_hc else hp
-def add_cost_expression(prob, u_vars, *, pv_series, tariffs, P_nom, step_min, price_sell=None):
+
+def add_cost_expression(prob, u_vars, *, pv_series, tariffs, P_nom, step_min, price_sell=None, optimization_start=None):
     N = len(u_vars)
     dt_h = step_min / 60
     heat_coeff = (P_nom/1000) * dt_h
     price_sell = price_sell or tariffs["tariffs_eur_per_kwh"].get("sell", 0.10)
+
+    if optimization_start is None:
+        optimization_start = datetime.now()
     
+    now_aligned = optimization_start.replace(second=0, microsecond=0)
+    now_aligned -= timedelta(minutes=now_aligned.minute % step_min)
     now_aligned = datetime.now().replace(second=0, microsecond=0)
     now_aligned -= timedelta(minutes=now_aligned.minute % step_min)
     
@@ -46,3 +52,8 @@ def add_cost_expression(prob, u_vars, *, pv_series, tariffs, P_nom, step_min, pr
         cost_terms.append(price_buy * buy_k - price_sell * sell_k)
     
     prob += pulp.lpSum(cost_terms)
+    return {
+        'buy_vars': buy_vars,
+        'sell_vars': sell_vars,
+        'cost_terms': cost_terms
+    }

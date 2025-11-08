@@ -415,31 +415,39 @@ def get_prediction_temperature_by_chauffe_eau(chauffe_eau_id):
     conn.close()
     return rows
 
-
-def add_decision(chauffe_eau_id, liste, heure_decision=None, conn=None):
+def add_decision(chauffe_eau_id, liste, step_min, heure_debut=None, conn=None):
     """
-    Ajoute une décision pour un chauffe-eau
-    liste: peut être une liste [0,1,0,...] ou une string "ON"/"OFF"
+    Ajoute une décision avec métadonnées de timing
     """
+    should_close = False
     if conn is None:
         conn = get_connection()
-    cur = conn.cursor()
-    ts = heure_decision or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        should_close = True
     
-    # Convertir la liste en format stockable
-    if isinstance(liste, list):
-        # Convertir la liste en string JSON
-        liste_str = json.dumps(liste)
-    else:
-        liste_str = str(liste)
+    if conn is None:
+        return None
+        
+    cur = conn.cursor()
+    
+    # Heure de début de la séquence de décisions
+    if heure_debut is None:
+        heure_debut = datetime.now()
+    
+    # Préparer les données structurées
+    decision_data = {
+        "start_time": heure_debut.strftime("%Y-%m-%d %H:%M:%S"),
+        "step_min": step_min,
+        "decisions": liste
+    }
     
     sql = "INSERT INTO decision (chauffe_eau_id, statut, heure_decision) VALUES (%s, %s, %s)"
-    cur.execute(sql, (chauffe_eau_id, liste_str, ts))
+    cur.execute(sql, (chauffe_eau_id, json.dumps(decision_data), heure_debut))
     conn.commit()
     decision_id = cur.lastrowid
     
-    if conn is None:  # Fermer seulement si nous avons créé la connexion
+    if should_close:
         conn.close()
+        
     return decision_id
 
 def get_immediate_decision_by_client(client_id):

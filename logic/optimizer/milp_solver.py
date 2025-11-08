@@ -1,10 +1,15 @@
 import pulp, numpy as np
 from cost import add_cost_expression
+from datetime import datetime, timedelta
 
 def milp_analysis(ctx):
     step_min = int(ctx["step_min"])
     horizon_h = int(ctx["horizon_h"])
     N = horizon_h * 60 // step_min
+    optimization_start = ctx.get("optimization_start_time", datetime.now())
+    start_aligned = optimization_start.replace(second=0, microsecond=0)
+    start_aligned -= timedelta(minutes=start_aligned.minute % step_min)
+
     P_nom = float(ctx["water_heater"]["puissance_kw"]) * 1000
     volume_L = int(ctx["water_heater"]["capacite_litres"])
     t0 = float(ctx["t0"])
@@ -34,7 +39,8 @@ def milp_analysis(ctx):
         pv_series=ctx["pv_production"],
         tariffs=ctx["tariffs"],
         P_nom=P_nom,
-        step_min=step_min
+        step_min=step_min,
+        optimization_start=start_aligned  
     )
 
     prob.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=30))
@@ -42,89 +48,101 @@ def milp_analysis(ctx):
     if prob.status == pulp.LpStatusOptimal:
         u_values = [int(pulp.value(var)) for var in u]
         T_values = [float(pulp.value(var)) for var in T]
-        metrics = calculate_detailed_metrics(u_values, T_values, ctx, prob)
+        metrics = calculate_detailed_metrics(u_values, T_values, ctx, start_aligned, prob) 
         return True, u_values, T_values, metrics
     else:
         print(f"❌ Échec: {pulp.LpStatus[prob.status]}")
         return False, None, None, None
-
-
-def calculate_detailed_metrics(u_values, T_values, ctx, prob):
+def calculate_detailed_metrics(u_values, T_values, ctx, start_aligned, prob=None):
+    """Calcule les métriques détaillées en cohérence avec le modèle MILP"""
     step_min = int(ctx["step_min"])
     P_nom = float(ctx["water_heater"]["puissance_kw"]) * 1000
-
-    total_on_slots = sum(u_values)
-    total_on_time = total_on_slots * (step_min / 60)
-    total_energy = total_on_slots * (P_nom / 1000) * (step_min / 60)
-    total_cost = 0
-    energy_hp = energy_hc = cost_hp = cost_hc = 0
-    pv_used_for_heating = grid_energy_used = 0
     dt_h = step_min / 60
 
-    for k, u_val in enumerate(u_values):
-        if u_val == 1:
-            energy_needed = (P_nom / 1000) * dt_h
-            pv_available = ctx["pv_production"][k] * dt_h
-            pv_used = min(pv_available, energy_needed)
-            pv_used_for_heating += pv_used
-            grid_used = max(0, energy_needed - pv_used)
-            grid_energy_used += grid_used
+    
+    total_on_slots = sum(u_values)
+    total_on_time = total_on_slots * dt_h
+    total_energy = total_on_slots * (P_nom / 1000) * dt_h
+    
+  
+    energy_hp = energy_hc = cost_hp = cost_hc = 0
+    pv_used_for_heating = 0
+    grid_energy_used = 0
 
-            from cost import _price_for_slot
-            from datetime import datetime, timedelta
+   
+    if prob is not None and prob.status == pulp.LpStatusOptimal:
+        try:
+            buy_vars = [prob.variablesDict().get(f"buy_{k}") for k in range(len(u_values))]
+            sell_vars = [prob.variablesDict().get(f"sell_{k}") for k in range(len(u_values))]
+            
+            for k, u_val in enumerate(u_values):
+                if u_val == 1 and buy_vars[k] is not None and sell_vars[k] is not None:
+                    buy_val = pulp.value(buy_vars[k])
+                    sell_val = pulp.value(sell_vars[k])
+                    
+                   
+                    pv_used = ctx["pv_production"][k] * dt_h - sell_val if k < len(ctx["pv_production"]) else 0
+                    grid_used = buy_val
+                    
+                    pv_used_for_heating += pv_used
+                    grid_energy_used += grid_used
 
-            now = datetime.now().replace(second=0, microsecond=0)
-            now -= timedelta(minutes=now.minute % step_min)
-            slot_center = now + timedelta(minutes=step_min * (k + 0.5))
-            price = _price_for_slot(slot_center, ctx["tariffs"])
+                   
+                    slot_center = start_aligned + timedelta(minutes=step_min * (k + 0.5))
+                    from cost import _price_for_slot
+                    price = _price_for_slot(slot_center, ctx["tariffs"])
+                    
+                    hc_price = ctx["tariffs"]["tariffs_eur_per_kwh"].get("hc", 0.18)
+                    if abs(price - hc_price) < 0.01:
+                        energy_hc += grid_used
+                        cost_hc += grid_used * price
+                    else:
+                        energy_hp += grid_used
+                        cost_hp += grid_used * price
+                        
+        except (KeyError, AttributeError):
+            # Fallback si problème avec les variables MILP
+            prob = None
 
-            hc_price = ctx["tariffs"]["tariffs_eur_per_kwh"].get("hc", 0.18)
-            if abs(price - hc_price) < 0.01:
-                energy_hc += grid_used
-                cost_hc += grid_used * price
-            else:
-                energy_hp += grid_used
-                cost_hp += grid_used * price
+    # Fallback : calcul approximatif (pour démo ou erreur MILP)
+    if prob is None:
+        for k, u_val in enumerate(u_values):
+            if u_val == 1:
+                energy_needed = (P_nom / 1000) * dt_h
+                pv_available = ctx["pv_production"][k] * dt_h if k < len(ctx["pv_production"]) else 0
+                
+                pv_used = min(pv_available, energy_needed)
+                grid_used = energy_needed
+                
+                pv_used_for_heating += pv_used
+                grid_energy_used += grid_used
+
+               
+                slot_center = start_aligned + timedelta(minutes=step_min * (k + 0.5))
+                from cost import _price_for_slot
+                price = _price_for_slot(slot_center, ctx["tariffs"])
+                
+                hc_price = ctx["tariffs"]["tariffs_eur_per_kwh"].get("hc", 0.18)
+                if abs(price - hc_price) < 0.01:
+                    energy_hc += grid_used
+                    cost_hc += grid_used * price
+                else:
+                    energy_hp += grid_used
+                    cost_hp += grid_used * price
 
     total_cost = cost_hp + cost_hc
-    pv_series = ctx["pv_production"]
-    pv_energy_total = sum(pv_series) * dt_h
-    self_consumption_rate = (pv_used_for_heating / total_energy * 100) if total_energy > 0 else 0
-    pv_utilization_rate = (pv_used_for_heating / pv_energy_total * 100) if pv_energy_total > 0 else 0
-    pv_energy_total = sum(pv_series) * (step_min / 60) * (P_nom / 1000)
-    pv_used_for_heating = 0
 
-    for k in range(len(u_values)):
-        if u_values[k] == 1 and pv_series[k] > 0:
-            pv_used = min(pv_series[k] * (step_min / 60), (P_nom / 1000) * (step_min / 60))
-            pv_used_for_heating += pv_used
-
+   
+    pv_energy_total = sum(ctx["pv_production"][:len(u_values)]) * dt_h if ctx["pv_production"] else 0
     self_consumption_rate = (pv_used_for_heating / total_energy * 100) if total_energy > 0 else 0
     pv_utilization_rate = (pv_used_for_heating / pv_energy_total * 100) if pv_energy_total > 0 else 0
 
-    energy_hp = energy_hc = 0
-    for k, u_val in enumerate(u_values):
-        if u_val == 1:
-            from cost import _price_for_slot
-            from datetime import datetime, timedelta
-
-            now = datetime.now().replace(second=0, microsecond=0)
-            now -= timedelta(minutes=now.minute % step_min)
-            slot_center = now + timedelta(minutes=step_min * (k + 0.5))
-            price = _price_for_slot(slot_center, ctx["tariffs"])
-
-            energy_slot = (P_nom / 1000) * (step_min / 60)
-            hc_price = ctx["tariffs"]["tariffs_eur_per_kwh"].get("hc", 0.18)
-            if abs(price - hc_price) < 0.01:
-                energy_hc += energy_slot
-            else:
-                energy_hp += energy_slot
-
-    cost_hp = energy_hp * ctx["tariffs"]["tariffs_eur_per_kwh"]["hp"]
-    cost_hc = energy_hc * ctx["tariffs"]["tariffs_eur_per_kwh"]["hc"]
+  
     T_min = min(T_values)
     T_max = max(T_values)
     T_avg = np.mean(T_values)
+
+
     comfort_schedule = ctx.get("comfort_schedule", [ctx.get("minimum_comfort_temperature", 50.0)] * len(T_values))
     comfort_violations = 0
     comfort_margins = []
@@ -151,6 +169,7 @@ def calculate_detailed_metrics(u_values, T_values, ctx, prob):
         "temperature_avg": T_avg,
         "pv_energy_total_kwh": pv_energy_total,
         "pv_used_for_heating_kwh": pv_used_for_heating,
+        "grid_energy_used_kwh": grid_energy_used,
         "self_consumption_rate": self_consumption_rate,
         "pv_utilization_rate": pv_utilization_rate,
         "comfort_violations": comfort_violations,

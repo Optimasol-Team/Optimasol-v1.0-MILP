@@ -14,9 +14,10 @@ The broker parameters are stored in a simple key-value text file
 
 from pathlib import Path
 import paho.mqtt.client as mqtt
-from data.com_bdd import get_client, get_immediate_decision_by_client
+from data.com_bdd import get_client, get_immediate_decision_by_client,get_CE_by_client
+from decision_executor import get_current_decision, format_command
 
-# ──────────────────────────────────────────────
+# ──────────────────────────────────────────────    
 # 1)  Load broker configuration **once** at import
 # ──────────────────────────────────────────────
 
@@ -65,21 +66,20 @@ def _publish(topic: str, payload: str) -> None:
 # 3)  Public entry point
 # ──────────────────────────────────────────────
 
-def send_command(client_id: str) -> None:
-    """
-    va chercher décision de client , extract the numeric mode and publish it
-    to topic "<client_name>/SETMODE"."""
-    client = get_client(client_id)
-    decision = get_immediate_decision_by_client(client_id) # c'est un str
 
-    if decision is None :
-        raise FileNotFoundError(f"decision of {client_id} not found")
+def send_command(client_id):
+    """Envoie la commande actuelle pour un client"""
+    # Récupérer le chauffe-eau du client
+    ce_id = get_CE_by_client(client_id)
+    if not ce_id:
+        print(f"Client {client_id} sans chauffe-eau")
+        return
 
-    topic = f"{client['router_id']}/SETMODE"     # e.g. "client_A/SETMODE"
+    current_decision = get_current_decision(ce_id)
+    
+    if current_decision is None:
+        print(f"Aucune décision valide pour client {client_id}")
+        return
 
-    _publish(topic, decision)
-
-    # Optional debug – harmless on a headless server; comment out if undesired
-    print(f"Published mode {decision} → {topic}")
-
-
+    command = format_command(current_decision)
+    print(f"Envoi commande client {client_id}: {command}")

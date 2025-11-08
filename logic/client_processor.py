@@ -5,6 +5,7 @@ from data.com_bdd import (get_connection, get_CE_by_client, get_chauffe_eau,
                          get_configuration_prediction_by_chauffe_eau, get_previsions_by_client, add_decision)
 from logic.optimizer.milp_solver import optimise
 import json
+from datetime import datetime
 
 class Client:
     def __init__(self, client_id):
@@ -49,6 +50,8 @@ class Client:
             missing = N - len(available)
             self.data["pv_production"] = available + [0.0] * missing
         
+        self._load_water_consumption(system_config)
+        
         if system_config:
             self.data["tariffs"] = {
                 "contract_type": system_config.get("contract_type", "base"),
@@ -70,57 +73,61 @@ class Client:
         self.data["comfort_schedule"] = self._parse_comfort_schedule(system_config)
         self.data["minimum_comfort_temperature_enabled"] = system_config.get("minimum_comfort_temperature_enabled", False) if system_config else False
 
+    def _load_water_consumption(self, system_config):
+        if system_config and system_config.get('water_consumption'):
+            water_data = system_config['water_consumption']
+            if isinstance(water_data, str):
+                try:
+                    water_data = json.loads(water_data)
+                except:
+                    water_data = None
+            
+            if water_data and 'distribution' in water_data:
+                self.data["water_consumption"] = self._distribution_to_series(
+                    water_data['distribution'],
+                    self.data["step_min"], 
+                    self.data["horizon_h"]
+                )
+                return
+        
+        N = self.data["horizon_h"] * 60 // self.data["step_min"]
+        self.data["water_consumption"] = [0] * N
+    
+    def _distribution_to_series(self, distribution, step_min, horizon_h):
+        N = horizon_h * 60 // step_min
+        consumption = [0] * N
+        
+        for event in distribution:
+            hour = event.get("hour", 0)
+            liters = event.get("liters", 0)
+            
+            start_index = (hour * 60) // step_min
+            duration_slots = 60 // step_min
+            liters_per_slot = liters / duration_slots
+            
+            for i in range(duration_slots):
+                idx = start_index + i
+                if idx < N:
+                    consumption[idx] += liters_per_slot
+        
+        return consumption
+
     def _parse_comfort_schedule(self, system_config):
-        if not system_config or 'comfort_schedule' not in system_config:
-            return self._default_comfort_schedule()
+        if not system_config or not system_config.get('comfort_schedule'):
+            return [
+                {"time": "07:00", "target_temperature_celsius": 70},
+                {"time": "19:00", "target_temperature_celsius": 65}
+            ]
         
         comfort = system_config['comfort_schedule']
-        if not comfort:
-            return self._default_comfort_schedule()
-            
         if isinstance(comfort, list):
             return comfort
-            
         if isinstance(comfort, str):
             try:
-                parsed = json.loads(comfort)
-                if isinstance(parsed, list):
-                    return parsed
-                elif isinstance(parsed, dict):
-                    return self._convert_comfort_dict_to_list(parsed)
+                return json.loads(comfort)
             except:
                 pass
         
-        return self._default_comfort_schedule()
-    
-    def _convert_comfort_dict_to_list(self, comfort_dict):
-        result = []
-        
-        if "morning" in comfort_dict:
-            morning_time = self._extract_target_time(comfort_dict["morning"])
-            result.append({"time": morning_time, "target_temperature_celsius": 70})
-        
-        if "evening" in comfort_dict:
-            evening_time = self._extract_target_time(comfort_dict["evening"]) 
-            result.append({"time": evening_time, "target_temperature_celsius": 65})
-            
-        if "weekday" in comfort_dict:
-            result.append({"time": comfort_dict["weekday"], "target_temperature_celsius": 70})
-        if "weekend" in comfort_dict:
-            result.append({"time": comfort_dict["weekend"], "target_temperature_celsius": 70})
-            
-        return result or self._default_comfort_schedule()
-    
-    def _extract_target_time(self, time_range):
-        if '-' in time_range:
-            start, end = time_range.split('-')
-            start_h = int(start.split(':')[0])
-            end_h = int(end.split(':')[0])
-            middle_h = (start_h + end_h) // 2
-            return f"{middle_h:02d}:00"
-        return time_range
-    
-    def _default_comfort_schedule(self):
         return [
             {"time": "07:00", "target_temperature_celsius": 70},
             {"time": "19:00", "target_temperature_celsius": 65}
@@ -142,9 +149,19 @@ def process_client(client_id) -> None:
         return
 
     try:
+        optimization_start = datetime.now()
+        client.data["optimization_start_time"] = optimization_start
+        
         decision_list = optimise(client.data)
-        add_decision(client.id_CE, decision_list, conn=client.conn)
-        print(f"Décision sauvegardée pour client {client_id}: {len(decision_list)} créneaux")
+        add_decision(
+            client.id_CE, 
+            decision_list, 
+            step_min=client.data["step_min"],
+            horizon_h=client.data["horizon_h"],
+            heure_debut=optimization_start,
+            conn=client.conn
+        )
+        print(f"Décision sauvegardée pour client {client_id}: {len(decision_list)} créneaux à partir de {optimization_start}")
     except Exception as e:
         print(f"Erreur optimisation client {client_id}: {e}")
     finally:

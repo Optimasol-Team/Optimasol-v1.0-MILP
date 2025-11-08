@@ -16,7 +16,7 @@ def simulate_classic_water_heater_midi(ctx, maintenance_temp=65.0):
     UA = 1.5
     T_ambient = ctx.get("ambient_temperature", 20.0)
     T_cold = ctx.get("cold_water_temperature", 15.0)
-    C = volume_L * 418
+    C = volume_L * 4180
     u_values = [0] * N
     T_values = [t0] + [0] * N
     
