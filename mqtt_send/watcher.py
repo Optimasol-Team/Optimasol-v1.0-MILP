@@ -1,66 +1,73 @@
-"""
-watcher.py – Monitor every decisions.txt under <clients_root> and
-             call send_command(client_dir) as soon as it changes.
-
-How to run
-----------
-python -m mqtt_send.watcher "C:/path/to/optimasol/clients"
-"""
-
 import time
-from pathlib import Path
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
-
-# Import the sender’s public entry point
+from datetime import datetime
+import threading
 from .sender import send_command
+from data.com_bdd import get_connection
 
 
-class DecisionsHandler(FileSystemEventHandler):
-    """Callback invoked by watchdog on every filesystem change."""
+class DecisionsDBHandler:
+    """Surveille les changements dans la table decision de la BDD"""
+    
+    def __init__(self, check_interval=5):
+        self.check_interval = check_interval
+        self.last_check = datetime.now()
+        self.running = True
+    
+    def check_database_changes(self):
+        """Vérifie les nouvelles décisions dans la base de données"""
+        while self.running:
+            conn = None
+            try:
+                conn = get_connection()
+                cur = conn.cursor()
+                
+                cur.execute("""
+                    SELECT DISTINCT client_id 
+                    FROM decision 
+                    WHERE timestamp_creation > %s
+                    ORDER BY timestamp_creation DESC
+                """, (self.last_check,))
+                
+                new_clients = cur.fetchall()
+                self.last_check = datetime.now()
+                
+                for (client_id,) in new_clients:
+                    print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Nouvelle décision détectée pour client {client_id}")
+                    try:
+                        send_command(str(client_id))
+                    except Exception as exc:
+                        print(f"[DB Watcher] Erreur d’envoi pour client {client_id}: {exc}")
+            
+            except Exception as exc:
+                print(f"[DB Watcher] Erreur base de données: {exc}")
+            
+            finally:
+                if conn:
+                    conn.close()
+            
+            time.sleep(self.check_interval)
+    
+    def start(self):
+        """Démarrer la surveillance en arrière-plan"""
+        thread = threading.Thread(target=self.check_database_changes)
+        thread.daemon = True
+        thread.start()
+    
+    def stop(self):
+        """Arrêter la surveillance"""
+        self.running = False
 
-    def on_modified(self, event):
-        # Ignore directory events
-        if event.is_directory:
-            return
 
-        path = Path(event.src_path)
+def run_db_watcher(check_interval: int = 5) -> None:
+    """Lancer la surveillance de la BDD"""
+    db_handler = DecisionsDBHandler(check_interval=check_interval)
+    db_handler.start()
 
-        # Only react to files literally named decisions.txt
-        if path.name.lower() != "decisions.txt":
-            return
-
-        client_dir = path.parent  # …/clients/<CLIENT_ID>
-
-        try:
-            # Trigger the MQTT send for this client
-            send_command(str(client_dir))
-        except Exception as exc:
-            # Log but keep watcher alive
-            print(f"[watcher] Error while sending for {client_dir}: {exc}")
-
-
-def run_watcher(clients_root: str | Path) -> None:
-    """
-    Start watching <clients_root> recursively; never returns
-    (Ctrl-C / SIGINT to stop).
-    """
-    root = Path(clients_root).resolve()
-    if not root.is_dir():
-        raise ValueError(f"{root} is not a directory")
-
-    handler = DecisionsHandler()
-    observer = Observer()
-    observer.schedule(handler, str(root), recursive=True)
-    observer.start()
-
-    print(f"[watcher] Monitoring {root} (press Ctrl-C to stop)")
+    print(f"[DB Watcher] Surveillance BDD toutes les {check_interval}s (Ctrl-C pour arrêter)")
 
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        observer.stop()
-    observer.join()
-
-
+        print("\n[DB Watcher] Arrêt demandé, fermeture propre...")
+        db_handler.stop()
