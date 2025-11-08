@@ -442,29 +442,16 @@ def add_decision(chauffe_eau_id, liste, heure_decision=None, conn=None):
         conn.close()
     return decision_id
 
-
-def get_decision_by_CE(chauffe_eau_id):
+def get_immediate_decision_by_client(client_id):
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM decision WHERE chauffe_eau_id = %s ORDER BY heure_decision DESC", (chauffe_eau_id,))
+    cur.execute("SELECT immediate_decision FROM decision WHERE client_id = %s ORDER BY timestamp_creation DESC", (client_id,))
     rows = cur.fetchall()
     
-    # Convertir les résultats pour parser le JSON
     decisions = []
     for row in rows:
-        if isinstance(row, tuple):
-            # Convertir tuple en dict
-            columns = [desc[0] for desc in cur.description]
-            row_dict = dict(zip(columns, row))
-            
-            # Parser le statut si c'est du JSON
-            statut = row_dict.get('statut', '')
-            if statut.startswith('[') and statut.endswith(']'):
-                try:
-                    row_dict['statut'] = json.loads(statut)
-                except:
-                    pass
-            decisions.append(row_dict)
+        if row and row[0]:  # Vérifier que la ligne et la valeur existent
+            decisions.append(row[0]) 
     
     conn.close()
     return decisions
