@@ -47,8 +47,10 @@ get_decision_by_CE
 
 import pymysql
 from datetime import datetime
-from data.bdd_config_loader import load_bdd_config
+
 import json
+from .bdd_config_loader import load_bdd_config
+
 
 DB_CONFIG = load_bdd_config()
 
@@ -71,16 +73,16 @@ def get_connection():
 # ==========================
 # ======= CLIENTS ==========
 # ==========================
-def add_client(nom, email, latitude, longitude, tilt=None, azimuth=None, router_id=None):
+def add_client(nom, email, latitude, longitude, tilt=None, azimuth=None, router_id=None,pwd=None):
     conn = get_connection()
     if conn is None:
         return None
     cur = conn.cursor()
     sql = """
-        INSERT INTO clients (nom, email, latitude, longitude, tilt, azimuth, router_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO clients (nom, email, latitude, longitude, tilt, azimuth, router_id,pwd)
+        VALUES (%s, %s, %s, %s, %s, %s, %s,%s)
     """
-    cur.execute(sql, (nom, email, latitude, longitude, tilt, azimuth, router_id))
+    cur.execute(sql, (nom, email, latitude, longitude, tilt, azimuth, router_id,pwd))
     conn.commit()
     client_id = cur.lastrowid
     conn.close()
@@ -326,29 +328,28 @@ def get_previsions_by_client(client_id):
 
 # ==========================
 # == CONFIGURATION SYSTÈME ==
-# ==========================
 def add_system_configuration(client_id, cold_water_temp, min_comfort_enabled, min_comfort_temp,
                              contract_type, base_tariff, hp_tariff, hc_tariff,
                              comfort_schedule=None, hot_water_draws=None,
-                             off_peak_hours=None, custom_tariffs=None):
+                             off_peak_hours=None, sell_tariffs=None, water_consumption=None):
     conn = get_connection()
     cur = conn.cursor()
+    
     sql = """
         INSERT INTO system_configuration
         (client_id, cold_water_temperature,
          minimum_comfort_temperature_enabled, minimum_comfort_temperature,
          contract_type, base_tariff, hp_tariff, hc_tariff,
-         comfort_schedule, hot_water_draws, off_peak_hours, custom_tariffs)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+         comfort_schedule, hot_water_draws, off_peak_hours, sell_tariffs, water_consumption)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
     cur.execute(sql, (client_id, cold_water_temp, int(min_comfort_enabled), min_comfort_temp,
                       contract_type, base_tariff, hp_tariff, hc_tariff,
-                      comfort_schedule, hot_water_draws, off_peak_hours, custom_tariffs))
+                      comfort_schedule, hot_water_draws, off_peak_hours, sell_tariffs, water_consumption))
     conn.commit()
     cfg_id = cur.lastrowid
     conn.close()
     return cfg_id
-
 
 def get_system_configuration_by_client(client_id):
     conn = get_connection()
@@ -369,7 +370,7 @@ def add_configuration_prediction(chauffe_eau_id, intervalle_min, horizon_h, seui
     cur = conn.cursor()
     sql = """
         INSERT INTO configuration_prediction
-        (chauffe_eau_id, intervalle_measure_min, horizon_prediction_heures,
+        (chauffe_eau_id, step_min, horizon_prediction_heures,
          seuil_alerte_basse, seuil_alerte_haute)
         VALUES (%s, %s, %s, %s, %s)
     """
@@ -450,10 +451,10 @@ def add_decision(chauffe_eau_id, liste, step_min, heure_debut=None, conn=None):
         
     return decision_id
 
-def get_immediate_decision_by_client(client_id):
+def get_decision_by_CE(ce_id):
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT immediate_decision FROM decision WHERE client_id = %s ORDER BY timestamp_creation DESC", (client_id,))
+    cur.execute("SELECT statut FROM decision WHERE chauffe_eau_id = %s ORDER BY timestamp_creation DESC", (ce_id,))
     rows = cur.fetchall()
     
     decisions = []

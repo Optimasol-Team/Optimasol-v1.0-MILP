@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, time
 import pulp
 
-def _price_for_slot(slot_center, tariffs):
+def price_for_slot(slot_center, tariffs):
     base = tariffs["tariffs_eur_per_kwh"].get("base", tariffs["tariffs_eur_per_kwh"]["hp"])
     if tariffs.get("contract_type") != "HPHC":
         return base
@@ -47,7 +47,7 @@ def add_cost_expression(prob, u_vars, *, pv_series, tariffs, P_nom, step_min, pr
         prob += sell_k <= pv_kWh
         
         slot_center = now_aligned + timedelta(minutes=step_min * (k + 0.5))
-        price_buy = _price_for_slot(slot_center, tariffs)
+        price_buy = price_for_slot(slot_center, tariffs)
         
         cost_terms.append(price_buy * buy_k - price_sell * sell_k)
     

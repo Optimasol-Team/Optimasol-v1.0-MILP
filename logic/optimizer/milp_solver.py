@@ -1,11 +1,15 @@
+#milp_solver.py
+
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import pulp, numpy as np
-from cost import add_cost_expression
+from .cost import add_cost_expression, price_for_slot
 from datetime import datetime, timedelta
 
 def milp_analysis(ctx):
     step_min = int(ctx["step_min"])
-    horizon_h = int(ctx["horizon_h"])
-    N = horizon_h * 60 // step_min
+
+    N = 24 * 60 // step_min
     optimization_start = ctx.get("optimization_start_time", datetime.now())
     start_aligned = optimization_start.replace(second=0, microsecond=0)
     start_aligned -= timedelta(minutes=start_aligned.minute % step_min)
@@ -21,7 +25,9 @@ def milp_analysis(ctx):
     T_cold = ctx.get("cold_water_temperature", 15.0)
     C = volume_L * 4180
     prob += T[0] == t0
-    comfort_schedule = ctx.get("comfort_schedule", [ctx.get("minimum_comfort_temperature", 50.0)] * N)
+    
+
+    comfort_schedule = generate_comfort_schedule_for_horizon(ctx, start_aligned, N, step_min)
 
     for k in range(N):
         heating_energy = (u[k] * P_nom * step_min * 60) / C
@@ -30,9 +36,8 @@ def milp_analysis(ctx):
         cooling_effect = (wc / volume_L) * (T[k] - T_cold) if wc > 0 else 0
         prob += T[k + 1] == T[k] + heating_energy - heat_loss - cooling_effect
 
-        if ctx.get("minimum_comfort_temperature_enabled", False):
-            min_temp = comfort_schedule[k] if k < len(comfort_schedule) else ctx.get("minimum_comfort_temperature", 50.0)
-            prob += T[k + 1] >= min_temp
+        min_temp = comfort_schedule[k] if k < len(comfort_schedule) else ctx.get("minimum_comfort_temperature", 50.0)
+        prob += T[k + 1] >= min_temp
 
     add_cost_expression(
         prob, u,
@@ -42,7 +47,6 @@ def milp_analysis(ctx):
         step_min=step_min,
         optimization_start=start_aligned  
     )
-
     prob.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=30))
 
     if prob.status == pulp.LpStatusOptimal:
@@ -53,8 +57,24 @@ def milp_analysis(ctx):
     else:
         print(f"❌ Échec: {pulp.LpStatus[prob.status]}")
         return False, None, None, None
+def generate_comfort_schedule_for_horizon(ctx, start_time, N, step_min):
+    raw_schedule = ctx.get("comfort_schedule", [])
+    if not raw_schedule:
+        return [ctx.get("minimum_comfort_temperature", 50.0)] * N
+    
+    raw_len = len(raw_schedule)
+    start_index = (start_time.hour * 60 + start_time.minute) // step_min
+    start_index = start_index % raw_len
+    
+    # Répéter le schedule pour couvrir N créneaux
+    shifted = raw_schedule[start_index:] + raw_schedule[:start_index]
+    full_schedule = (shifted * (N // len(shifted) + 1))[:N]
+    
+    return full_schedule
+
 def calculate_detailed_metrics(u_values, T_values, ctx, start_aligned, prob=None):
     """Calcule les métriques détaillées en cohérence avec le modèle MILP"""
+    N = len(u_values)
     step_min = int(ctx["step_min"])
     P_nom = float(ctx["water_heater"]["puissance_kw"]) * 1000
     dt_h = step_min / 60
@@ -89,9 +109,9 @@ def calculate_detailed_metrics(u_values, T_values, ctx, start_aligned, prob=None
 
                    
                     slot_center = start_aligned + timedelta(minutes=step_min * (k + 0.5))
-                    from cost import _price_for_slot
-                    price = _price_for_slot(slot_center, ctx["tariffs"])
-                    
+
+                    price = price_for_slot(slot_center, ctx["tariffs"])
+
                     hc_price = ctx["tariffs"]["tariffs_eur_per_kwh"].get("hc", 0.18)
                     if abs(price - hc_price) < 0.01:
                         energy_hc += grid_used
@@ -119,8 +139,7 @@ def calculate_detailed_metrics(u_values, T_values, ctx, start_aligned, prob=None
 
                
                 slot_center = start_aligned + timedelta(minutes=step_min * (k + 0.5))
-                from cost import _price_for_slot
-                price = _price_for_slot(slot_center, ctx["tariffs"])
+                price = price_for_slot(slot_center, ctx["tariffs"])
                 
                 hc_price = ctx["tariffs"]["tariffs_eur_per_kwh"].get("hc", 0.18)
                 if abs(price - hc_price) < 0.01:
@@ -143,7 +162,8 @@ def calculate_detailed_metrics(u_values, T_values, ctx, start_aligned, prob=None
     T_avg = np.mean(T_values)
 
 
-    comfort_schedule = ctx.get("comfort_schedule", [ctx.get("minimum_comfort_temperature", 50.0)] * len(T_values))
+    comfort_schedule = generate_comfort_schedule_for_horizon(ctx, start_aligned, len(T_values)-1, step_min)
+    
     comfort_violations = 0
     comfort_margins = []
 
@@ -155,8 +175,9 @@ def calculate_detailed_metrics(u_values, T_values, ctx, start_aligned, prob=None
                 comfort_violations += 1
 
     avg_margin = np.mean(comfort_margins) if comfort_margins else 0
-
+    comfort_schedule = generate_comfort_schedule_for_horizon(ctx, start_aligned, N, step_min)
     return {
+        "confort_schedule": comfort_schedule,
         "total_energy_kwh": total_energy,
         "total_cost_eur": total_cost,
         "total_on_time_h": total_on_time,
