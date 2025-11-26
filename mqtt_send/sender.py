@@ -71,6 +71,8 @@ def send_command(client_id):
     """Envoie la commande actuelle pour un client"""
     # Récupérer le chauffe-eau du client
     ce_id = get_CE_by_client(client_id)
+    client = get_client(client_id)
+    routeur_id = client.get("router_id")
     if not ce_id:
         print(f"Client {client_id} sans chauffe-eau")
         return
@@ -83,3 +85,11 @@ def send_command(client_id):
 
     command = format_command(current_decision)
     print(f"Envoi commande client {client_id}: {command}")
+    topic = f"{router_id}/SETMODE" # ???
+    try:
+        # Envoi effectif de la commande via MQTT
+        _publish(topic, command)
+        print(f"Commande envoyée avec succès sur le topic: {topic}")
+    except Exception as e:
+        print(f"Erreur lors de l'envoi MQTT: {e}")
+    

@@ -73,7 +73,8 @@ def get_connection():
 # ==========================
 # ======= CLIENTS ==========
 # ==========================
-def add_client(nom, email, latitude, longitude, tilt=None, azimuth=None, router_id=None,pwd=None):
+
+def add_client(nom=None, email=None, latitude=None, longitude=None, tilt=None, azimuth=None, router_id=None,pwd=None):
     conn = get_connection()
     if conn is None:
         return None

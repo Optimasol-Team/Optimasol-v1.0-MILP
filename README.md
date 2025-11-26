@@ -20,6 +20,8 @@ pour l'appli :
  streamlit,
 
 interface communication
- Si type is None alors juste enoie des données normales,
- si type auth : alors tentative de connexion aller érifier que l'utilisateur existe et que mdp bon, 
+ Si type is "creation" alors envoie le router_id et le pwd,
+ si typ et termine avec "/DATA" alors c'est juste ranger les infos
+ si type est "demande" alors donne les infos nécessaires
+
  si type is new_user: alors créer un utilisateur

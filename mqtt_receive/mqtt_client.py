@@ -9,10 +9,12 @@ import paho.mqtt.client as mqtt
 import json
 from mqtt_receive.message_handler import handle_message
 from typing import Dict
+from data.com_bdd import add_client
 
 def start_mqtt_client(config: Dict) -> mqtt.Client:
     """
-    Starts and returns a configured MQTT client that listens to all <client_id>/DATA topics.
+    Starts and returns a configured MQTT client that listens to all <client_id>/DATA topics
+    and the creation topic for new client registration.
 
     Args:
         config (dict): MQTT configuration with keys: host, port, user, pass, refresh.
@@ -30,16 +32,31 @@ def start_mqtt_client(config: Dict) -> mqtt.Client:
             print("[INFO] Connected to MQTT broker.")
             # Subscribe to all data topics (e.g. PV0001/DATA)
             client.subscribe("+/DATA")
-            print("[INFO] Subscribed to topics: +/DATA")
+            # Subscribe to creation topic for new client registration
+            client.subscribe("creation")
+            print("[INFO] Subscribed to topics: +/DATA, creation")
         else:
             print(f"[ERROR] MQTT connection failed with code {rc}")
 
     def on_message(client, userdata, msg):
         try:
-            topic = msg.topic  # ex: PV0001/DATA
-            payload = json.loads(msg.payload.decode())
-            client_id = topic.split("/")[0]
-            handle_message(client_id, payload)
+            topic = msg.topic  # ex: PV0001/DATA or creation
+            
+            if topic == "creation":
+                # Handle client creation message
+                payload = json.loads(msg.payload.decode())
+                print(f"[INFO] Received creation message: {payload}")
+                r_id,password = payload.get("router_id"),payload.get("password")
+                add_client(router_id=r_id,pwd=password)  
+                
+            elif topic.endswith("/DATA"):
+                # Handle regular data message
+                payload = json.loads(msg.payload.decode())
+                client_id = topic.split("/")[0]
+                handle_message(client_id, payload)
+                
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] Invalid JSON in message on topic {msg.topic}: {e}")
         except Exception as e:
             print(f"[ERROR] Failed to process message on topic {msg.topic}: {e}")
 
