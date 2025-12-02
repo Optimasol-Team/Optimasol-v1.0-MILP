@@ -1,0 +1,12 @@
+pymysql
+pulp
+numpy
+paho
+watcher
+threading
+
+Python 3.14.0
+
+Port MQTT (généralement 1883 ou 8883 pour TLS)
+
+Port MySQL (3306 par défaut)

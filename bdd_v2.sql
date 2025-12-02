@@ -61,10 +61,11 @@ CREATE TABLE `clients` (
 ) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
---
--- Dumping data for table `clients`
---
-
+INSERT INTO `clients` 
+(`client_id`, `nom`, `email`, `latitude`, `longitude`, `tilt`, `azimuth`, `router_id`, `pwd`, `is_admin`) 
+VALUES 
+(1, 'Admin', '', 0, 0, 0.00, 0.00, '', 
+'$2b$12$YUs0XL4wLsQk79JLhaJmLuvQZrIkzXdc7vjyZNDINpGFR4gxCUBMy');
 
 -- Table structure for table `configuration_prediction`
 --

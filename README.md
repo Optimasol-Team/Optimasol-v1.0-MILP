@@ -8,7 +8,7 @@ git remote add origin https://github.com/Optimasol-Team/Optimasol-v1.0-MILP.git
 git pull origin main --allow-unrelated-histories
 git branch -M main
 git add ...
-git commit - m ""
+git commit -m ""
 git push -u origin main
 
 pour activer l'environnement : env\Scripts\activate
