@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0.32
+    platform: linux/arm/v7
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: app_database
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  app:
+    build: .
+    platform: linux/arm/v7
+    restart: always
+    ports:
+      - "8000:8000"   # l'app ?
+      - "1883:1883"   # MQTT
+    depends_on:
+      - mysql
+    # on monte tout le code
+    volumes:
+      - .:/app
+
+volumes:
+  mysql_data:
