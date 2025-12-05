@@ -62,7 +62,7 @@ CREATE TABLE `clients` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 INSERT INTO `clients` 
-(`client_id`, `nom`, `email`, `latitude`, `longitude`, `tilt`, `azimuth`, `router_id`, `pwd`, `is_admin`) 
+(`client_id`, `nom`, `email`, `latitude`, `longitude`, `tilt`, `azimuth`, `router_id`, `pwd`) 
 VALUES 
 (1, 'Admin', '', 0, 0, 0.00, 0.00, '', 
 '$2b$12$YUs0XL4wLsQk79JLhaJmLuvQZrIkzXdc7vjyZNDINpGFR4gxCUBMy');
