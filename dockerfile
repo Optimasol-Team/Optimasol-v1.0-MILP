@@ -3,7 +3,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Installer les dépendances
+RUN apt-get update && apt-get install -y build-essential # pour installer numpy il faut installer ça avant
 RUN pip install pymysql pulp numpy paho-mqtt watchdog
 
 # Le code sera monté via le volume dans docker-compose
